@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import OpenAI from 'openai';
+import AudioControls from './components/AudioControls';
 
 export default function Home() {
   const [text, setText] = useState('This is a test of the Kokoro text-to-speech system.');
@@ -12,6 +13,9 @@ export default function Home() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [isBrowser, setIsBrowser] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   
   const audioRef = useRef(null);
   const mediaSourceRef = useRef(null);
@@ -232,100 +236,161 @@ export default function Home() {
     document.body.removeChild(a);
   };
 
+  // Add new function to handle speed change
+  const handleSpeedChange = (speed) => {
+    setPlaybackSpeed(speed);
+    if (audioElementRef.current) {
+      audioElementRef.current.playbackRate = speed;
+    }
+  };
+
+  // Add function to handle rewind
+  const handleRewind = () => {
+    if (audioElementRef.current) {
+      audioElementRef.current.currentTime = Math.max(0, audioElementRef.current.currentTime - 10);
+    }
+  };
+
+  // Add function to handle forward
+  const handleForward = () => {
+    if (audioElementRef.current) {
+      audioElementRef.current.currentTime = Math.min(
+        audioElementRef.current.duration,
+        audioElementRef.current.currentTime + 10
+      );
+    }
+  };
+
+  // Add function to handle play/pause
+  const handlePlayPause = () => {
+    if (audioElementRef.current) {
+      if (isPlaying) {
+        audioElementRef.current.pause();
+      } else {
+        audioElementRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  // Add function to update time
+  useEffect(() => {
+    const updateTime = () => {
+      if (audioElementRef.current) {
+        setCurrentTime(audioElementRef.current.currentTime);
+        setDuration(audioElementRef.current.duration || 0);
+      }
+    };
+
+    if (audioElementRef.current) {
+      audioElementRef.current.addEventListener('timeupdate', updateTime);
+      audioElementRef.current.addEventListener('loadedmetadata', updateTime);
+    }
+
+    return () => {
+      if (audioElementRef.current) {
+        audioElementRef.current.removeEventListener('timeupdate', updateTime);
+        audioElementRef.current.removeEventListener('loadedmetadata', updateTime);
+      }
+    };
+  }, [audioElementRef.current]);
+
+  // Add handleSeek function
+  const handleSeek = (seekTime) => {
+    if (audioElementRef.current) {
+      audioElementRef.current.currentTime = seekTime;
+    }
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-6 md:p-24">
-      <div className="z-10 w-full max-w-3xl bg-white dark:bg-slate-800 rounded-lg p-8 shadow-xl">
-        <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center">
-          Kokoro TTS Web Application
-        </h1>
-        
-        <div className="mb-6">
-          <label htmlFor="voice" className="block text-sm font-medium mb-2">
-            Select Voice:
+    <main className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Audio Controls */}
+      {isBrowser && (
+        <AudioControls
+          currentTime={currentTime}
+          duration={duration}
+          isPlaying={isPlaying}
+          onPlay={() => handlePlayPause()}
+          onPause={() => handlePlayPause()}
+          onRewind={handleRewind}
+          onForward={handleForward}
+          playbackSpeed={playbackSpeed}
+          onSpeedChange={handleSpeedChange}
+          onSeek={handleSeek}
+        />
+      )}
+
+      {/* Main Content */}
+      <div className="max-w-3xl mx-auto p-4">
+        {/* Voice Selection */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Voice
           </label>
           <select
-            id="voice"
             value={voice}
             onChange={handleVoiceChange}
-            className="w-full p-2 border border-gray-300 rounded-md"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="bm_lewis">bm_lewis (Male)</option>
-            <option value="af_bella">af_bella (Female)</option>
-            <option value="en_jenny">en_jenny (Female)</option>
+            <option value="bm_lewis">Lewis</option>
+            <option value="bm_emma">Emma</option>
+            <option value="bm_brian">Brian</option>
           </select>
         </div>
-        
-        <div className="mb-6">
-          <label htmlFor="file" className="block text-sm font-medium mb-2">
-            Upload Text File:
+
+        {/* Text Input */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Text to Speech
+          </label>
+          <textarea
+            value={text}
+            onChange={handleTextChange}
+            rows={6}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Enter text to convert to speech..."
+          />
+        </div>
+
+        {/* File Upload */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Or upload a text file
           </label>
           <input
             type="file"
-            id="file"
             accept=".txt"
             onChange={handleFileChange}
-            className="w-full p-2 border border-gray-300 rounded-md"
+            className="w-full"
           />
         </div>
-        
-        <div className="mb-6">
-          <label htmlFor="text" className="block text-sm font-medium mb-2">
-            Text to Convert:
-          </label>
-          <textarea
-            id="text"
-            value={text}
-            onChange={handleTextChange}
-            rows={8}
-            className="w-full p-3 border border-gray-300 rounded-md"
-            placeholder="Enter text to convert to speech..."
-          ></textarea>
-        </div>
-        
-        <div className="flex flex-col gap-4 sm:flex-row sm:gap-2 justify-center mb-4">
+
+        {/* Generate Button */}
+        <div className="flex justify-center">
           <button
-            onClick={generateSpeech}
-            disabled={isGenerating}
-            className={`py-2 px-6 rounded-md font-medium ${
+            onClick={isGenerating ? stopPlaying : generateSpeech}
+            disabled={!text.trim()}
+            className={`px-4 py-2 rounded-md font-medium ${
               isGenerating
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : text.trim()
+                ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
           >
-            {isGenerating ? 'Generating...' : 'Generate & Play Speech'}
+            {isGenerating ? 'Stop' : 'Generate & Play Speech'}
           </button>
-          
-          <button
-            onClick={stopPlaying}
-            disabled={!isPlaying && !isGenerating}
-            className={`py-2 px-6 rounded-md font-medium ${
-              !isPlaying && !isGenerating
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-red-600 hover:bg-red-700 text-white'
-            }`}
-          >
-            Stop Playback
-          </button>
-          
-          {downloadUrlRef.current && (
-            <button
-              onClick={downloadAudio}
-              className="py-2 px-6 rounded-md font-medium bg-green-600 hover:bg-green-700 text-white"
-            >
-              Download Audio
-            </button>
-          )}
         </div>
-        
+
+        {/* Status and Error Messages */}
         {status && (
-          <div className="mt-4 p-2 bg-blue-100 text-blue-800 rounded-md">
-            <p>{status}</p>
+          <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
+            {status}
           </div>
         )}
-        
         {error && (
-          <div className="mt-4 p-2 bg-red-100 text-red-800 rounded-md">
-            <p>{error}</p>
+          <div className="mt-4 text-center text-sm text-red-600 dark:text-red-400">
+            {error}
           </div>
         )}
       </div>

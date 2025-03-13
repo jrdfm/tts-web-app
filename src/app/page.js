@@ -14,6 +14,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [isBrowser, setIsBrowser] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [showSpeedOptions, setShowSpeedOptions] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
@@ -28,6 +29,7 @@ export default function Home() {
   const controllerRef = useRef(null);
   const openaiClientRef = useRef(null);
   const settingsRef = useRef(null);
+  const speedOptionsRef = useRef(null);
 
   // Fix hydration issues by setting isBrowser state only after component mounts
   useEffect(() => {
@@ -58,6 +60,22 @@ export default function Home() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showSettings]);
+
+  // Add click outside handler for speed options dropdown
+  useEffect(() => {
+    if (!showSpeedOptions) return;
+
+    const handleClickOutside = (event) => {
+      if (speedOptionsRef.current && !speedOptionsRef.current.contains(event.target)) {
+        setShowSpeedOptions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSpeedOptions]);
 
   useEffect(() => {
     // Clean up audio resources on unmount
@@ -292,12 +310,18 @@ export default function Home() {
     document.body.removeChild(a);
   };
 
-  // Add new function to handle speed change
+  // Enhanced function to handle speed change
   const handleSpeedChange = (speed) => {
     setPlaybackSpeed(speed);
     if (audioElementRef.current) {
       audioElementRef.current.playbackRate = speed;
     }
+    setShowSpeedOptions(false);
+  };
+
+  // Toggle speed options dropdown
+  const toggleSpeedOptions = () => {
+    setShowSpeedOptions(!showSpeedOptions);
   };
 
   // Add function to handle rewind
@@ -352,8 +376,14 @@ export default function Home() {
   }, [audioElementRef.current]);
 
   // Add handleSeek function
-  const handleSeek = (seekTime) => {
-    if (audioElementRef.current) {
+  const handleSeek = (e) => {
+    if (audioElementRef.current && duration > 0) {
+      const progressBar = e.currentTarget;
+      const bounds = progressBar.getBoundingClientRect();
+      const x = e.clientX - bounds.left;
+      const width = bounds.width;
+      const percentage = x / width;
+      const seekTime = percentage * duration;
       audioElementRef.current.currentTime = seekTime;
     }
   };
@@ -463,21 +493,114 @@ export default function Home() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-auto">
-        {/* Audio Controls - Full Width */}
+        {/* Audio Controls with Speed Control */}
         <div className="w-full sticky top-0 z-20">
           {isBrowser && (
-            <AudioControls
-              currentTime={currentTime}
-              duration={duration}
-              isPlaying={isPlaying}
-              onPlay={() => handlePlayPause()}
-              onPause={() => handlePlayPause()}
-              onRewind={handleRewind}
-              onForward={handleForward}
-              playbackSpeed={playbackSpeed}
-              onSpeedChange={handleSpeedChange}
-              onSeek={handleSeek}
-            />
+            <div className="bg-[#1a1a1a] border-b border-gray-800 w-full">
+              {/* Controls Container */}
+              <div className="max-w-screen-xl mx-auto flex items-center justify-between px-4 py-2 relative">
+                {/* Left: Time */}
+                <div className="flex items-center space-x-4">
+                  <div className="text-[#e25822]">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                    </svg>
+                  </div>
+                  <div className="text-sm text-white">
+                    {!isFinite(duration) || duration === 0 
+                      ? `${Math.floor(currentTime / 60)}:${String(Math.floor(currentTime % 60)).padStart(2, '0')} / --:--` 
+                      : `${Math.floor(currentTime / 60)}:${String(Math.floor(currentTime % 60)).padStart(2, '0')} / ${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}`
+                    }
+                  </div>
+                </div>
+
+                {/* Center: Main Controls */}
+                <div className="flex items-center space-x-6">
+                  {/* Rewind Button */}
+                  <button
+                    onClick={handleRewind}
+                    className="w-8 h-8 flex items-center justify-center text-white hover:text-[#e25822] transition-colors relative"
+                    style={{ transform: 'scaleX(-1)' }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 11-9-9" strokeLinecap="round" />
+                      <path d="M12 8l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+
+                  {/* Play/Pause Button */}
+                  <button
+                    onClick={handlePlayPause}
+                    className="w-10 h-10 flex items-center justify-center bg-[#e25822] rounded-full text-white hover:bg-[#d04d1d] transition-colors"
+                  >
+                    {isPlaying ? (
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="4" width="4" height="16" />
+                        <rect x="14" y="4" width="4" height="16" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    )}
+                  </button>
+
+                  {/* Forward Button */}
+                  <button
+                    onClick={handleForward}
+                    className="w-8 h-8 flex items-center justify-center text-white hover:text-[#e25822] transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 11-9-9" strokeLinecap="round" />
+                      <path d="M12 8l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+
+                  {/* Speed Control Dropdown - Next to Forward Button */}
+                  <div className="relative ml-4">
+                    <button
+                      onClick={toggleSpeedOptions}
+                      className="px-2 py-1 text-sm font-medium text-white hover:text-[#e25822] transition-colors flex items-center"
+                    >
+                      <span>{playbackSpeed}x</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                    
+                    {showSpeedOptions && (
+                      <div ref={speedOptionsRef} className="absolute left-0 top-full mt-1 w-24 bg-[#222222] border border-gray-700 rounded-md shadow-lg z-30">
+                        <div className="py-1">
+                          {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((speed) => (
+                            <button
+                              key={speed}
+                              onClick={() => handleSpeedChange(speed)}
+                              className={`block w-full text-left px-3 py-1 text-sm ${playbackSpeed === speed ? 'text-[#e25822] bg-[#2a2a2a]' : 'text-white hover:bg-[#2a2a2a]'}`}
+                            >
+                              {speed}x
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Empty Right Side for Balance */}
+                <div className="w-24"></div>
+              </div>
+              
+              {/* Progress Bar - Now at the bottom */}
+              <div 
+                className="h-1 bg-gray-800 cursor-pointer mt-2"
+                onClick={handleSeek}
+              >
+                <div 
+                  className="h-full bg-[#e25822] transition-all duration-100" 
+                  style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+                />
+              </div>
+            </div>
           )}
         </div>
 

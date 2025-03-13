@@ -7,6 +7,9 @@ import GenerateButton from './components/GenerateButton';
 import StatusDisplay from './components/StatusDisplay';
 import SettingsPanel from './components/SettingsPanel';
 import FileUploadPanel from './components/FileUploadPanel';
+import TimestampedTextDisplay from './components/TimestampedTextDisplay';
+import SentenceTextDisplay from './components/SentenceTextDisplay';
+import DebugPanel from './components/DebugPanel';
 import useSpeechGeneration from './hooks/useSpeechGeneration';
 
 /**
@@ -23,6 +26,9 @@ export default function Home() {
   const [text, setText] = useState('This is a test of the Kokoro text-to-speech system.');
   const [voice, setVoice] = useState('bm_lewis');
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  
+  // Display preferences
+  const [useSentenceView, setUseSentenceView] = useState(true);
   
   // Use speech generation hook for TTS functionality
   const speechGen = useSpeechGeneration();
@@ -46,13 +52,18 @@ export default function Home() {
   const handlePageWidthChange = (e) => {
     setPageWidth(parseInt(e.target.value, 10));
   };
+  
+  // Toggle between word and sentence view
+  const toggleViewMode = () => {
+    setUseSentenceView(!useSentenceView);
+  };
 
   // Handle generate/stop button clicks
   const handleActionButtonClick = () => {
     if (speechGen.isGenerating) {
       speechGen.stopPlaying();
     } else {
-      speechGen.generateSpeech(text, voice);
+      speechGen.generateSpeech(text, voice, playbackSpeed);
     }
   };
 
@@ -60,6 +71,28 @@ export default function Home() {
   const handleSpeedChange = (speed) => {
     setPlaybackSpeed(speed);
     speechGen.handleSpeedChange(speed);
+  };
+  
+  // Handle clicking on a word in the timestamps display
+  const handleWordClick = (time) => {
+    console.log('Word clicked with timestamp:', time);
+    if (speechGen.audioElementRef?.current) {
+      try {
+        // Set the current time
+        speechGen.audioElementRef.current.currentTime = time;
+        console.log('Set audio position to:', time);
+        
+        // Start playback if paused
+        if (speechGen.audioElementRef.current.paused) {
+          console.log('Audio was paused, starting playback');
+          speechGen.handlePlayPause();
+        }
+      } catch (error) {
+        console.error('Error handling word click:', error);
+      }
+    } else {
+      console.warn('Audio element reference not available for seeking');
+    }
   };
 
   return (
@@ -108,6 +141,56 @@ export default function Home() {
             onTextChange={handleTextChange}
           />
 
+          {/* Display Options */}
+          {isBrowser && speechGen.timestamps && speechGen.timestamps.length > 0 && (
+            <div className="flex justify-end mt-4 mb-2">
+              <button 
+                onClick={toggleViewMode}
+                className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-md"
+              >
+                {useSentenceView ? 'Switch to Word View' : 'Switch to Sentence View'}
+              </button>
+            </div>
+          )}
+
+          {/* Timestamped Text Display */}
+          {isBrowser && (
+            <>
+              {speechGen.timestamps && speechGen.timestamps.length > 0 ? (
+                <>
+                  {useSentenceView ? (
+                    <SentenceTextDisplay
+                      timestamps={speechGen.timestamps}
+                      currentWordIndex={speechGen.currentWordIndex}
+                      onWordClick={handleWordClick}
+                    />
+                  ) : (
+                    <TimestampedTextDisplay
+                      timestamps={speechGen.timestamps}
+                      currentWordIndex={speechGen.currentWordIndex}
+                      onWordClick={handleWordClick}
+                    />
+                  )}
+                  
+                  {/* Debug info */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="mt-2 mb-4 p-2 bg-gray-800 text-xs text-gray-400 rounded">
+                      <p>Current word index: {speechGen.currentWordIndex}</p>
+                      <p>Total words: {speechGen.timestamps.length}</p>
+                      <p>Current time: {speechGen.currentTime.toFixed(2)}s</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                speechGen.isGenerating && (
+                  <div className="mt-4 mb-6 text-sm text-gray-400">
+                    <p>Timestamps will be available as soon as possible during audio playback...</p>
+                  </div>
+                )
+              )}
+            </>
+          )}
+
           {/* Action Buttons */}
           <div className="flex justify-center space-x-4">
             <GenerateButton
@@ -121,6 +204,9 @@ export default function Home() {
           <StatusDisplay status={speechGen.status} error={speechGen.error} />
         </div>
       </div>
+      
+      {/* Debug Panel */}
+      {isBrowser && <DebugPanel />}
     </main>
   );
 }

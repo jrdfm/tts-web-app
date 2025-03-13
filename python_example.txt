@@ -1,0 +1,64 @@
+import requests
+
+#using requests instead of openai compatable api
+
+response = requests.post(
+    "http://localhost:8880/v1/audio/speech",
+    json={
+        "input": "Hello world!",
+        "voice": "af_bella",
+        "response_format": "pcm"
+    },
+    stream=True
+)
+# Save audio directly from binary stream
+with open("output.mp3", "wb") as f:
+    for chunk in response.iter_content(chunk_size=1024):  # Use iter_content for binary data
+        if chunk:
+            f.write(chunk)
+
+
+
+# Generate speech with streaming
+import requests
+
+# Generate speech with streaming
+response = requests.post(
+    "http://localhost:8880/dev/captioned_speech",
+    json={
+        "model": "kokoro",
+        "input": '''His first mission was in 1499 to Catherina Sforza, “my lady of Forli” of The Prince, 
+        from whose conduct and fate he drew the moral that it is far better to earn the confidence of the 
+        people than to rely on fortresses. This is a very noticeable principle in Machiavelli, and is urged
+        by him in many ways as a matter of vital importance to princes.
+
+In 1500 he was sent to France to obtain terms from Louis XII for continuing the war against Pisa: this king it was who, in his conduct of affairs in Italy, committed the five capital errors in statecraft summarized in The Prince, and was consequently driven out. He, also, it was who made the dissolution of his marriage a condition of support to Pope Alexander VI; which leads Machiavelli to refer those who urge that such promises should be kept to what he has written concerning the faith of princes.''',
+        "voice": "bm_lewis",
+        "speed": 1.0,
+        "response_format": "mp3",
+        "stream": True,  # Keep streaming enabled
+    },
+    stream=True
+)
+
+# Get timestamp path from headers
+timestamps_path = response.headers.get('x-timestamps-path')
+
+# Save audio directly from binary stream
+with open("output.mp3", "wb") as f:
+    for chunk in response.iter_content(chunk_size=1024):  # Use iter_content for binary data
+        if chunk:
+            f.write(chunk)
+
+# Retrieve timestamps after stream completes
+if timestamps_path:
+    ts_response = requests.get(f"http://localhost:8880/dev/timestamps/{timestamps_path}")
+    if ts_response.status_code == 200:
+        timestamps = ts_response.json()
+        print("Word-level timestamps:")
+        for ts in timestamps:
+            print(f"{ts['word']}: {ts['start_time']:.2f}s - {ts['end_time']:.2f}s")
+    else:
+        print(f"Failed to get timestamps: {ts_response.status_code}")
+else:
+    print("No timestamps path in response headers")

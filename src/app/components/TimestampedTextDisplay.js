@@ -120,6 +120,22 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
     }
   }, [currentWordIndex]);
 
+  // Helper to modify word rendering for display
+  const getDisplayWord = (word, index) => {
+    // Remove spaces before/after punctuation to avoid extra spacing
+    if (['.', ',', '!', '?', ':', ';'].includes(word)) {
+      return word;
+    }
+    
+    // Check if the next word is punctuation and shouldn't have a space
+    const nextItem = index < timestamps.length - 1 ? timestamps[index + 1] : null;
+    if (nextItem && ['.', ',', '!', '?', ':', ';'].includes(nextItem.word)) {
+      return word;
+    }
+    
+    return word;
+  };
+
   return (
     <div className="mb-6 mt-4">
       <label className="block text-sm font-medium text-white mb-2 flex justify-between">
@@ -132,16 +148,17 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
         ref={containerRef}
         className="w-full px-4 py-3 border border-gray-700 rounded-md shadow-sm bg-[#222222] text-white min-h-[5rem] max-h-[15rem] overflow-y-auto"
       >
-        <div className="flex flex-wrap">
+        <div style={{ display: 'inline', lineHeight: '2rem' }}>
           {timestamps.map((item, index) => (
             <span
               key={`${item.word}-${index}`}
               ref={el => wordRefs.current[index] = el}
-              className={`inline-block px-1 py-0.5 m-0.5 rounded ${
+              className={`px-1 py-0.5 rounded ${
                 currentWordIndex === index
                   ? 'bg-[#e25822] text-white font-medium'
                   : 'bg-gray-800 text-gray-300'
               } cursor-pointer transition-colors duration-150 ease-in-out hover:bg-gray-700`}
+              style={{ margin: 0, display: 'inline-block' }}
               title={`${item.word}: ${item.start_time.toFixed(2)}s - ${item.end_time.toFixed(2)}s`}
               onClick={() => handleWordClick(index)}
             >

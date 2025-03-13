@@ -19,15 +19,16 @@ const TimestampDisplay = ({ timestamps, currentWordIndex }) => {
   return (
     <div className="timestamps-container bg-gray-100 p-4 rounded-lg shadow-sm overflow-y-auto max-h-96">
       <h3 className="text-lg font-medium mb-2">Word Timestamps</h3>
-      <div className="timestamps-words flex flex-wrap">
+      <div style={{ display: 'inline', lineHeight: '2rem' }}>
         {timestamps.map((ts, index) => (
           <span
             key={`${ts.word}-${index}`}
-            className={`mr-1 px-1 py-0.5 rounded ${
+            className={`px-1 py-0.5 rounded ${
               index === currentWordIndex 
                 ? 'bg-blue-500 text-white font-medium' 
                 : 'hover:bg-gray-200 cursor-pointer'
             }`}
+            style={{ margin: 0, display: 'inline-block' }}
             title={`${ts.start_time.toFixed(2)}s - ${ts.end_time.toFixed(2)}s`}
           >
             {ts.word}

@@ -10,7 +10,8 @@ const AudioControls = ({
   onForward,
   playbackSpeed,
   onSpeedChange,
-  onSeek
+  onSeek,
+  onSettingsClick
 }) => {
   const formatTime = (time) => {
     if (!time || isNaN(time)) return '0:00';
@@ -40,28 +41,28 @@ const AudioControls = ({
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+    <div className="bg-[#1a1a1a] border-b border-gray-800">
       {/* Progress Bar */}
       <div 
-        className="h-1 bg-gray-200 dark:bg-gray-700 cursor-pointer"
+        className="h-1 bg-gray-800 cursor-pointer"
         onClick={handleSeek}
       >
         <div 
-          className="h-full bg-blue-500 transition-all duration-100" 
+          className="h-full bg-[#e25822] transition-all duration-100" 
           style={{ width: getProgressWidth() }}
         />
       </div>
 
       {/* Controls Container */}
-      <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-2">
+      <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-2 relative">
         {/* Left: Logo and Time */}
         <div className="flex items-center space-x-4">
-          <div className="text-blue-500">
+          <div className="text-[#e25822]">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
             </svg>
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-white">
             {formatTime(currentTime)} / {formatTime(duration)}
           </div>
         </div>
@@ -71,7 +72,7 @@ const AudioControls = ({
           {/* Rewind Button */}
           <button
             onClick={onRewind}
-            className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-blue-500 transition-colors relative"
+            className="w-8 h-8 flex items-center justify-center text-white hover:text-[#e25822] transition-colors relative"
             style={{ transform: 'scaleX(-1)' }}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -83,7 +84,7 @@ const AudioControls = ({
           {/* Play/Pause Button */}
           <button
             onClick={isPlaying ? onPause : onPlay}
-            className="w-10 h-10 flex items-center justify-center bg-blue-500 rounded-full text-white hover:bg-blue-600 transition-colors"
+            className="w-10 h-10 flex items-center justify-center bg-[#e25822] rounded-full text-white hover:bg-[#d04d1d] transition-colors"
           >
             {isPlaying ? (
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -100,7 +101,7 @@ const AudioControls = ({
           {/* Forward Button */}
           <button
             onClick={onForward}
-            className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-blue-500 transition-colors"
+            className="w-8 h-8 flex items-center justify-center text-white hover:text-[#e25822] transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 12a9 9 0 11-9-9" strokeLinecap="round" />
@@ -109,13 +110,26 @@ const AudioControls = ({
           </button>
         </div>
 
-        {/* Right: Speed Control */}
-        <div className="flex items-center">
+        {/* Right Section: Speed Control and Settings */}
+        <div className="flex items-center space-x-4">
+          {/* Speed Control */}
           <button
             onClick={() => onSpeedChange(playbackSpeed === 1 ? 1.5 : 1)}
-            className="px-2 py-1 text-sm font-medium text-gray-700 hover:text-blue-500 transition-colors"
+            className="px-2 py-1 text-sm font-medium text-white hover:text-[#e25822] transition-colors"
           >
             {playbackSpeed}x
+          </button>
+          
+          {/* Settings Gear Icon */}
+          <button
+            onClick={onSettingsClick}
+            className="w-8 h-8 flex items-center justify-center text-white hover:text-[#e25822] transition-colors"
+            aria-label="Settings"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
           </button>
         </div>
       </div>

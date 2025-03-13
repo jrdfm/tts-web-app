@@ -16,6 +16,7 @@ export default function Home() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
   
   const audioRef = useRef(null);
   const mediaSourceRef = useRef(null);
@@ -24,6 +25,7 @@ export default function Home() {
   const downloadUrlRef = useRef(null);
   const controllerRef = useRef(null);
   const openaiClientRef = useRef(null);
+  const settingsRef = useRef(null);
 
   // Fix hydration issues by setting isBrowser state only after component mounts
   useEffect(() => {
@@ -38,6 +40,22 @@ export default function Home() {
       });
     }
   }, []);
+
+  // Add click outside handler for settings dropdown
+  useEffect(() => {
+    if (!showSettings) return;
+
+    const handleClickOutside = (event) => {
+      if (settingsRef.current && !settingsRef.current.contains(event.target)) {
+        setShowSettings(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSettings]);
 
   useEffect(() => {
     // Clean up audio resources on unmount
@@ -302,66 +320,81 @@ export default function Home() {
     }
   };
 
+  // Toggle settings dropdown
+  const toggleSettings = () => {
+    setShowSettings(!showSettings);
+  };
+
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <main className="min-h-screen bg-[#121212]">
       {/* Audio Controls */}
       {isBrowser && (
-        <AudioControls
-          currentTime={currentTime}
-          duration={duration}
-          isPlaying={isPlaying}
-          onPlay={() => handlePlayPause()}
-          onPause={() => handlePlayPause()}
-          onRewind={handleRewind}
-          onForward={handleForward}
-          playbackSpeed={playbackSpeed}
-          onSpeedChange={handleSpeedChange}
-          onSeek={handleSeek}
-        />
+        <div className="relative">
+          <AudioControls
+            currentTime={currentTime}
+            duration={duration}
+            isPlaying={isPlaying}
+            onPlay={() => handlePlayPause()}
+            onPause={() => handlePlayPause()}
+            onRewind={handleRewind}
+            onForward={handleForward}
+            playbackSpeed={playbackSpeed}
+            onSpeedChange={handleSpeedChange}
+            onSeek={handleSeek}
+            onSettingsClick={toggleSettings}
+          />
+          
+          {/* Settings Dropdown */}
+          {showSettings && (
+            <div ref={settingsRef} className="absolute right-4 top-[calc(100%+4px)] z-10 w-64 bg-[#222222] border border-gray-700 rounded-md shadow-lg">
+              <div className="p-3">
+                <h3 className="text-white font-medium mb-2">Settings</h3>
+                <div className="mb-3">
+                  <label className="block text-sm text-white mb-1">
+                    Voice
+                  </label>
+                  <select
+                    value={voice}
+                    onChange={handleVoiceChange}
+                    className="w-full px-2 py-1.5 border border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-[#e25822] focus:border-[#e25822] bg-[#1a1a1a] text-white text-sm"
+                  >
+                    <option value="bm_lewis">Lewis</option>
+                    <option value="bm_emma">Emma</option>
+                    <option value="bm_brian">Brian</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Main Content */}
       <div className="max-w-3xl mx-auto p-4">
-        {/* Voice Selection */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Voice
-          </label>
-          <select
-            value={voice}
-            onChange={handleVoiceChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="bm_lewis">Lewis</option>
-            <option value="bm_emma">Emma</option>
-            <option value="bm_brian">Brian</option>
-          </select>
-        </div>
-
         {/* Text Input */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label className="block text-sm font-medium text-white mb-1">
             Text to Speech
           </label>
           <textarea
             value={text}
             onChange={handleTextChange}
             rows={6}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            className="w-full px-3 py-2 border border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-[#e25822] focus:border-[#e25822] bg-[#222222] text-white"
             placeholder="Enter text to convert to speech..."
           />
         </div>
 
         {/* File Upload */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label className="block text-sm font-medium text-white mb-1">
             Or upload a text file
           </label>
           <input
             type="file"
             accept=".txt"
             onChange={handleFileChange}
-            className="w-full"
+            className="w-full text-white"
           />
         </div>
 
@@ -372,10 +405,10 @@ export default function Home() {
             disabled={!text.trim()}
             className={`px-4 py-2 rounded-md font-medium ${
               isGenerating
-                ? 'bg-red-500 hover:bg-red-600 text-white'
+                ? 'bg-red-600 hover:bg-red-700 text-white'
                 : text.trim()
-                ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                ? 'bg-[#e25822] hover:bg-[#d04d1d] text-white'
+                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
             }`}
           >
             {isGenerating ? 'Stop' : 'Generate & Play Speech'}
@@ -384,12 +417,12 @@ export default function Home() {
 
         {/* Status and Error Messages */}
         {status && (
-          <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
+          <div className="mt-4 text-center text-sm text-gray-300">
             {status}
           </div>
         )}
         {error && (
-          <div className="mt-4 text-center text-sm text-red-600 dark:text-red-400">
+          <div className="mt-4 text-center text-sm text-red-400">
             {error}
           </div>
         )}

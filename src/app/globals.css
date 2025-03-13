@@ -3,6 +3,12 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --warm-primary: #e25822; /* Warm orange for play button */
+  --warm-accent: #e25822; /* Accent color */
+  --dark-background: #1a1a1a; /* Dark gray/almost black background */
+  --dark-foreground: #ededed; /* Light text for dark mode */
+  --darker-background: #121212; /* Even darker background */
+  --input-background: #222222; /* Dark input field background */
 }
 
 @theme inline {

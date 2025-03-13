@@ -39,7 +39,7 @@ export default function SentenceTextDisplay({ timestamps, currentWordIndex, onWo
       const isLastWord = index === timestamps.length - 1;
       
       if (endsWithPunctuation || isLastWord) {
-        // Finalize this sentence
+        // Finalize this sentence - keep spaces between words
         currentSentence.text = currentSentence.words.map(w => w.word).join(' ')
           .replace(/ ([,.!?;:])/g, '$1'); // Fix punctuation spacing
         
@@ -154,21 +154,22 @@ export default function SentenceTextDisplay({ timestamps, currentWordIndex, onWo
         ref={containerRef}
         className="w-full px-4 py-3 border border-gray-700 rounded-md shadow-sm bg-[#222222] text-white min-h-[5rem] max-h-[25rem] overflow-y-auto"
       >
-        <div className="space-y-2">
+        <div style={{ display: 'inline' }}>
           {sentences.map((sentence, index) => (
-            <p
+            <span
               key={`sentence-${index}`}
               ref={el => sentenceRefs.current[index] = el}
-              className={`p-2 rounded cursor-pointer ${
+              className={`inline-block rounded cursor-pointer ${
                 currentSentenceIndex === index
                   ? 'bg-[#4a3020] text-white'
                   : 'hover:bg-gray-800'
               }`}
+              style={{ margin: 0, padding: '2px 4px' }}
               title={`${sentence.startTime.toFixed(2)}s - ${sentence.endTime.toFixed(2)}s`}
               onClick={() => handleSentenceClick(index)}
             >
               {sentence.text}
-            </p>
+            </span>
           ))}
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 
 /**
  * TimestampedTextDisplay Component
@@ -9,6 +9,7 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isManualTimestamps, setIsManualTimestamps] = useState(false);
+  const [sentences, setSentences] = useState([]);
   
   // Ref for the container div to enable auto-scrolling
   const containerRef = useRef(null);
@@ -33,6 +34,50 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
         setIsManualTimestamps(false);
       }
     }
+  }, [timestamps]);
+  
+  // Group words into sentences (similar to SentenceTextDisplay)
+  useEffect(() => {
+    if (!timestamps || timestamps.length === 0) return;
+    
+    const sentenceGroups = [];
+    let currentSentence = {
+      words: [],
+      wordIndices: [],
+      startTime: null,
+      endTime: null
+    };
+    
+    timestamps.forEach((word, index) => {
+      // Start a new sentence if this is the first word
+      if (currentSentence.words.length === 0) {
+        currentSentence.startTime = word.start_time;
+      }
+      
+      // Add the word to the current sentence
+      currentSentence.words.push(word);
+      currentSentence.wordIndices.push(index);
+      currentSentence.endTime = word.end_time;
+      
+      // Check if this word ends a sentence
+      const endsWithPunctuation = /[.!?]$/.test(word.word);
+      const isLastWord = index === timestamps.length - 1;
+      
+      if (endsWithPunctuation || isLastWord) {
+        sentenceGroups.push(currentSentence);
+        
+        // Reset for the next sentence
+        currentSentence = {
+          words: [],
+          wordIndices: [],
+          startTime: null,
+          endTime: null
+        };
+      }
+    });
+    
+    console.log('Created', sentenceGroups.length, 'word groups');
+    setSentences(sentenceGroups);
   }, [timestamps]);
   
   // Error handling if timestamps are invalid
@@ -120,22 +165,6 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
     }
   }, [currentWordIndex]);
 
-  // Helper to modify word rendering for display
-  const getDisplayWord = (word, index) => {
-    // Remove spaces before/after punctuation to avoid extra spacing
-    if (['.', ',', '!', '?', ':', ';'].includes(word)) {
-      return word;
-    }
-    
-    // Check if the next word is punctuation and shouldn't have a space
-    const nextItem = index < timestamps.length - 1 ? timestamps[index + 1] : null;
-    if (nextItem && ['.', ',', '!', '?', ':', ';'].includes(nextItem.word)) {
-      return word;
-    }
-    
-    return word;
-  };
-
   return (
     <div className="mb-6 mt-4">
       <label className="block text-sm font-medium text-white mb-2 flex justify-between">
@@ -148,23 +177,75 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
         ref={containerRef}
         className="w-full px-4 py-3 border border-gray-700 rounded-md shadow-sm bg-[#222222] text-white min-h-[5rem] max-h-[15rem] overflow-y-auto"
       >
-        <div style={{ display: 'inline', lineHeight: '2rem' }}>
-          {timestamps.map((item, index) => (
-            <span
-              key={`${item.word}-${index}`}
-              ref={el => wordRefs.current[index] = el}
-              className={`px-1 py-0.5 rounded ${
-                currentWordIndex === index
-                  ? 'bg-[#e25822] text-white font-medium'
-                  : 'bg-gray-800 text-gray-300'
-              } cursor-pointer transition-colors duration-150 ease-in-out hover:bg-gray-700`}
-              style={{ margin: 0, display: 'inline-block' }}
-              title={`${item.word}: ${item.start_time.toFixed(2)}s - ${item.end_time.toFixed(2)}s`}
-              onClick={() => handleWordClick(index)}
-            >
-              {item.word}
-            </span>
-          ))}
+        <div className="text-gray-300 leading-relaxed" style={{ lineHeight: '1.6' }}>
+          {sentences.length > 0 ? (
+            sentences.map((sentence, sentenceIndex) => {
+              // Check if this sentence ends with punctuation
+              const lastWord = sentence.words[sentence.words.length - 1];
+              const endsWithPunctuation = lastWord && /[.!?]$/.test(lastWord.word);
+              
+              return (
+                <span
+                  key={`sentence-${sentenceIndex}`}
+                  className="inline"
+                >
+                  {sentence.words.map((word, wordIndex) => {
+                    const globalIndex = sentence.wordIndices[wordIndex];
+                    const isPunctuation = /^[.,!?:;]$/.test(word.word.trim());
+                    
+                    // Determine if we need space before this word
+                    const needsSpace = wordIndex > 0 && !isPunctuation;
+                    
+                    return (
+                      <React.Fragment key={`word-${globalIndex}`}>
+                        {needsSpace && <span> </span>}
+                        <span
+                          ref={el => wordRefs.current[globalIndex] = el}
+                          className={`${
+                            currentWordIndex === globalIndex
+                              ? 'bg-[#e25822] text-white font-medium px-1 py-0.5 rounded'
+                              : 'hover:underline hover:text-white'
+                          } cursor-pointer`}
+                          title={`${word.word}: ${word.start_time.toFixed(2)}s - ${word.end_time.toFixed(2)}s`}
+                          onClick={() => handleWordClick(globalIndex)}
+                        >
+                          {word.word}
+                        </span>
+                      </React.Fragment>
+                    );
+                  })}
+                  {/* Add space between sentences (more after end of sentence) */}
+                  {sentenceIndex < sentences.length - 1 && (
+                    <span>{endsWithPunctuation ? '  ' : ' '}</span>
+                  )}
+                </span>
+              );
+            })
+          ) : (
+            // Fallback to the flat word list if no sentences were created
+            timestamps.map((item, index) => {
+              const isPunctuation = /^[.,!?:;]$/.test(item.word.trim());
+              const needsSpace = index > 0 && !isPunctuation;
+              
+              return (
+                <React.Fragment key={`word-fallback-${index}`}>
+                  {needsSpace && <span> </span>}
+                  <span
+                    ref={el => wordRefs.current[index] = el}
+                    className={`${
+                      currentWordIndex === index
+                        ? 'bg-[#e25822] text-white font-medium px-1 py-0.5 rounded'
+                        : 'hover:underline hover:text-white'
+                    } cursor-pointer`}
+                    title={`${item.word}: ${item.start_time.toFixed(2)}s - ${item.end_time.toFixed(2)}s`}
+                    onClick={() => handleWordClick(index)}
+                  >
+                    {item.word}
+                  </span>
+                </React.Fragment>
+              );
+            })
+          )}
         </div>
       </div>
       <div className="mt-2 text-xs text-gray-400 flex justify-between">

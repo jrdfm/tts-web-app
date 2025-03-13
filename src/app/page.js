@@ -20,6 +20,12 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [pageWidth, setPageWidth] = useState(95);
   const [isDragging, setIsDragging] = useState(false);
+  const [highlightStart, setHighlightStart] = useState(0);
+  const [highlightEnd, setHighlightEnd] = useState(0);
+  const [isHighlighting, setIsHighlighting] = useState(false);
+  const [wordTimestamps, setWordTimestamps] = useState([]);
+  const [currentWordIndex, setCurrentWordIndex] = useState(-1);
+  const textContainerRef = useRef(null);
   
   const audioRef = useRef(null);
   const mediaSourceRef = useRef(null);
@@ -90,26 +96,35 @@ export default function Home() {
       audioElementRef.current.src = '';
     }
     
-    if (mediaSourceRef.current && mediaSourceRef.current.readyState === 'open') {
-      try {
-        mediaSourceRef.current.endOfStream();
-      } catch (e) {
-        console.error('Error ending media source stream:', e);
-      }
-    }
-    
     // Release any object URLs
     if (downloadUrlRef.current) {
       URL.revokeObjectURL(downloadUrlRef.current);
       downloadUrlRef.current = null;
     }
     
-    mediaSourceRef.current = null;
-    sourceBufferRef.current = null;
+    // Abort any ongoing fetch
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+      controllerRef.current = null;
+    }
+    
+    // Reset highlighting when cleaning up
+    setIsHighlighting(false);
   };
 
   const handleTextChange = (e) => {
     setText(e.target.value);
+    
+    // If text changes, we need to adjust highlight positions or disable highlighting
+    if (isHighlighting) {
+      const newLength = e.target.value.length;
+      const oldLength = text.length;
+      
+      // Simple approach: if text got shorter, potentially disable highlighting
+      if (newLength < oldLength && (highlightStart >= newLength || highlightEnd >= newLength)) {
+        setIsHighlighting(false);
+      }
+    }
   };
 
   const handleVoiceChange = (e) => {
@@ -177,6 +192,7 @@ export default function Home() {
     setIsGenerating(false);
   };
 
+  // Update the generateSpeech function to use the standard OpenAI-compatible TTS endpoint and implement a simpler streaming approach
   const generateSpeech = async () => {
     if (!text.trim()) {
       setError('Please enter or upload some text first.');
@@ -187,102 +203,95 @@ export default function Home() {
       setError('');
       setStatus('Generating speech...');
       setIsGenerating(true);
+      setWordTimestamps([]);
+      setCurrentWordIndex(-1);
       
       // Stop any currently playing audio
       cleanup();
       
-      // Create a new abort controller
+      // Create a new abort controller for the fetch request
       controllerRef.current = new AbortController();
       
-      // Initialize MediaSource
-      mediaSourceRef.current = new MediaSource();
-      audioElementRef.current = new Audio();
-      audioElementRef.current.src = URL.createObjectURL(mediaSourceRef.current);
-      
-      // Set up MediaSource when it opens
-      await new Promise((resolve) => {
-        mediaSourceRef.current.addEventListener('sourceopen', () => {
-          sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer('audio/mpeg');
-          sourceBufferRef.current.mode = 'sequence';
-          resolve();
-        });
-      });
-      
-      // Add event listeners
-      audioElementRef.current.addEventListener('ended', () => {
-        setIsPlaying(false);
-        setStatus('Playback complete');
-      });
-      
-      audioElementRef.current.addEventListener('error', (e) => {
-        console.error('Audio error:', e);
-        setError(`Audio error: ${e.message || 'Unknown error'}`);
-      });
-
       try {
-        // Use the OpenAI client for streaming
-        console.log('Starting speech generation with OpenAI client...');
+        // Simpler approach - use the OpenAI-compatible TTS endpoint
+        setStatus('Starting speech generation...');
         
-        const response = await openaiClientRef.current.audio.speech.create({
-          model: "kokoro",
-          voice: voice,
-          input: text,
-          response_format: "mp3",
-          stream: true
+        // Generate timestamps for the words in the text
+        const words = [];
+        let position = 0;
+        const textWords = text.match(/\S+/g) || [];
+        
+        for (const word of textWords) {
+          // Find the position in the original text
+          const pos = text.indexOf(word, position);
+          if (pos >= 0) {
+            words.push({
+              text: word,
+              pos: pos
+            });
+            position = pos + word.length;
+          }
+        }
+        
+        // Use the OpenAI API client to generate speech
+        const audioResponse = await fetch('http://localhost:8880/v1/audio/speech', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: "kokoro",
+            voice: voice,
+            input: text,
+            response_format: "mp3",
+            speed: playbackSpeed
+          }),
+          signal: controllerRef.current.signal,
         });
         
-        setStatus('Receiving audio stream...');
-        
-        let hasStartedPlaying = false;
-        let receivedChunks = 0;
-        
-        // Process the streaming response
-        for await (const chunk of response.body) {
-          receivedChunks++;
-          setStatus(`Received chunk ${receivedChunks}`);
-          
-          // Wait for previous update to complete
-          if (sourceBufferRef.current.updating) {
-            await new Promise(resolve => {
-              sourceBufferRef.current.addEventListener('updateend', resolve, { once: true });
-            });
-          }
-          
-          // Append the new chunk
-          sourceBufferRef.current.appendBuffer(chunk);
-          
-          // Start playback once we have some data
-          if (!hasStartedPlaying && sourceBufferRef.current.buffered.length > 0) {
-            hasStartedPlaying = true;
-            audioElementRef.current.play();
-            setIsPlaying(true);
-          }
-          
-          // Clean up old data if needed
-          if (sourceBufferRef.current.buffered.length > 0) {
-            const currentTime = audioElementRef.current.currentTime;
-            const start = sourceBufferRef.current.buffered.start(0);
-            const end = sourceBufferRef.current.buffered.end(0);
-            
-            // Remove data more than 30 seconds behind current playback
-            if (currentTime - start > 30) {
-              const removeEnd = Math.max(start, currentTime - 15);
-              if (removeEnd > start && !sourceBufferRef.current.updating) {
-                sourceBufferRef.current.remove(start, removeEnd);
-              }
-            }
-          }
+        if (!audioResponse.ok) {
+          throw new Error(`API request failed with status ${audioResponse.status}: ${await audioResponse.text()}`);
         }
         
-        // End the stream when done
-        if (mediaSourceRef.current.readyState === 'open') {
-          mediaSourceRef.current.endOfStream();
-        }
+        // Get the audio data as a blob
+        const audioBlob = await audioResponse.blob();
         
-        setStatus('Audio streaming complete');
+        // Create a URL for the audio blob
+        if (downloadUrlRef.current) {
+          URL.revokeObjectURL(downloadUrlRef.current);
+        }
+        const audioUrl = URL.createObjectURL(audioBlob);
+        downloadUrlRef.current = audioUrl;
+        
+        // Create the audio element
+        audioElementRef.current = new Audio(audioUrl);
+        
+        // Add event listeners
+        audioElementRef.current.addEventListener('ended', () => {
+          setIsPlaying(false);
+          setStatus('Playback complete');
+        });
+        
+        audioElementRef.current.addEventListener('error', (e) => {
+          console.error('Audio error:', e);
+          setError(`Audio error: ${e.message || 'Unknown error'}`);
+        });
+        
+        // Set the playback speed
+        audioElementRef.current.playbackRate = playbackSpeed;
+        
+        // Start playing immediately - no need to wait for all data
+        audioElementRef.current.addEventListener('loadedmetadata', () => {
+          // Generate approximate timestamps based on audio duration
+          generateApproximateTimestamps(audioElementRef.current.duration);
+        });
+        
+        await audioElementRef.current.play();
+        setIsPlaying(true);
+        setStatus('Playing audio...');
         
       } catch (err) {
-        console.error('Error with OpenAI client streaming:', err);
+        console.error('Error with speech generation:', err);
         throw err;
       } finally {
         setIsGenerating(false);
@@ -297,17 +306,110 @@ export default function Home() {
       cleanup();
     }
   };
+  
+  // Function to generate approximate timestamps based on total duration
+  const generateApproximateTimestamps = (duration) => {
+    // Simple tokenization of words in text
+    const words = text.trim().split(/\s+/);
+    
+    if (words.length === 0 || !duration) {
+      return;
+    }
+    
+    // Create a simple linear model of word timing
+    // We'll spread the words evenly across the duration
+    const timestamps = [];
+    let position = 0;
+    
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      
+      // Find position in original text (with proper spacing)
+      const wordPos = text.indexOf(word, position);
+      if (wordPos === -1) continue;
+      
+      position = wordPos + word.length;
+      
+      // Estimate start time based on word position
+      const startTime = (i / words.length) * duration;
+      
+      timestamps.push({
+        text: word,
+        start: startTime,
+        end: ((i + 1) / words.length) * duration,
+        pos: wordPos
+      });
+    }
+    
+    // Set the timestamps
+    setWordTimestamps(timestamps);
+  };
 
   const downloadAudio = () => {
-    if (!downloadUrlRef.current) return;
+    if (!audioElementRef.current || !audioElementRef.current.src) {
+      setError('No audio available to download');
+      return;
+    }
     
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const a = document.createElement('a');
-    a.href = downloadUrlRef.current;
-    a.download = `tts_${voice}_${timestamp}.mp3`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    try {
+      // Create a MediaRecorder to capture audio from the current audio element
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaElementSource(audioElementRef.current.cloneNode());
+      const destination = audioContext.createMediaStreamDestination();
+      source.connect(destination);
+      
+      // Create a MediaRecorder to capture the output
+      const recorder = new MediaRecorder(destination.stream);
+      const chunks = [];
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+      
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/mp3' });
+        const url = URL.createObjectURL(blob);
+        
+        // Create a download link
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `tts_${voice}_${timestamp}.mp3`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // Clean up
+        URL.revokeObjectURL(url);
+      };
+      
+      // Start recording
+      recorder.start();
+      
+      // Play the audio for recording (at max speed to save time)
+      const tempAudio = source.mediaElement;
+      tempAudio.currentTime = 0;
+      tempAudio.playbackRate = 2; // Faster playback for quicker capturing
+      
+      // Once played through, stop the recorder
+      tempAudio.onended = () => {
+        recorder.stop();
+        audioContext.close();
+      };
+      
+      // Start playing
+      tempAudio.play().catch(err => {
+        console.error('Error capturing audio for download:', err);
+        setError('Failed to capture audio for download');
+      });
+      
+      setStatus('Processing download...');
+    } catch (error) {
+      console.error('Error downloading audio:', error);
+      setError(`Download error: ${error.message}`);
+    }
   };
 
   // Enhanced function to handle speed change
@@ -317,6 +419,9 @@ export default function Home() {
       audioElementRef.current.playbackRate = speed;
     }
     setShowSpeedOptions(false);
+    
+    // Reset current word index to force re-evaluation of highlighting on speed change
+    setCurrentWordIndex(-1);
   };
 
   // Toggle speed options dropdown
@@ -328,6 +433,8 @@ export default function Home() {
   const handleRewind = () => {
     if (audioElementRef.current) {
       audioElementRef.current.currentTime = Math.max(0, audioElementRef.current.currentTime - 10);
+      // Reset current word index to force re-evaluation of highlighting position
+      setCurrentWordIndex(-1);
     }
   };
 
@@ -338,6 +445,8 @@ export default function Home() {
         audioElementRef.current.duration,
         audioElementRef.current.currentTime + 10
       );
+      // Reset current word index to force re-evaluation of highlighting position
+      setCurrentWordIndex(-1);
     }
   };
 
@@ -385,6 +494,9 @@ export default function Home() {
       const percentage = x / width;
       const seekTime = percentage * duration;
       audioElementRef.current.currentTime = seekTime;
+      
+      // Reset current word index to force re-evaluation of highlighting position
+      setCurrentWordIndex(-1);
     }
   };
 
@@ -397,6 +509,146 @@ export default function Home() {
   const handlePageWidthChange = (e) => {
     setPageWidth(parseInt(e.target.value, 10));
   };
+
+  // Function to render highlighted text
+  const renderHighlightedText = () => {
+    if (!text) return null;
+    
+    // If no highlighting is active, return the plain text
+    if (!isHighlighting || highlightStart === highlightEnd || highlightStart >= text.length) {
+      return <div className="whitespace-pre-wrap">{text}</div>;
+    }
+    
+    // Ensure valid highlighting positions
+    const start = Math.max(0, Math.min(highlightStart, text.length));
+    const end = Math.max(start, Math.min(highlightEnd, text.length));
+    
+    // Split the text into three parts: before highlight, highlighted, and after highlight
+    const beforeHighlight = text.substring(0, start);
+    const highlighted = text.substring(start, end);
+    const afterHighlight = text.substring(end);
+    
+    return (
+      <div className="whitespace-pre-wrap">
+        {beforeHighlight}
+        <span className="bg-[#e25822] bg-opacity-40 text-white font-medium rounded highlighted-text transition-all duration-300">{highlighted}</span>
+        {afterHighlight}
+      </div>
+    );
+  };
+
+  // Function to test highlighting (will be removed later)
+  const testHighlighting = () => {
+    if (text.length < 10) return;
+    
+    // Generate random start and end positions
+    const start = Math.floor(Math.random() * (text.length - 10));
+    const end = start + Math.floor(Math.random() * 20) + 10; // Highlight between 10-30 chars
+    
+    setHighlightStart(start);
+    setHighlightEnd(Math.min(end, text.length));
+    setIsHighlighting(true);
+  };
+
+  // Function to update highlighting based on audio playback and timestamps
+  useEffect(() => {
+    if (!isPlaying || !text || !audioElementRef.current || wordTimestamps.length === 0) {
+      return;
+    }
+
+    // Find the current word based on audio currentTime
+    const currentTime = audioElementRef.current.currentTime;
+    let newWordIndex = -1;
+    
+    // Find the word that corresponds to the current time
+    for (let i = 0; i < wordTimestamps.length; i++) {
+      const timestamp = wordTimestamps[i];
+      
+      // If this is the last word or the current time is between this word's start and the next word's start
+      if (
+        i === wordTimestamps.length - 1 || 
+        (currentTime >= timestamp.start && currentTime < wordTimestamps[i + 1].start)
+      ) {
+        newWordIndex = i;
+        break;
+      }
+    }
+    
+    // If we found a different word than before, update the highlighting
+    if (newWordIndex !== -1 && newWordIndex !== currentWordIndex) {
+      setCurrentWordIndex(newWordIndex);
+      
+      // Find the text positions for the current word
+      const currentWord = wordTimestamps[newWordIndex];
+      
+      if (currentWord && currentWord.text && typeof currentWord.pos === 'number') {
+        // Calculate start and end positions in the text
+        const wordStart = currentWord.pos;
+        const wordEnd = wordStart + currentWord.text.length;
+        
+        // Look ahead to highlight multiple words (more natural reading experience)
+        let endPos = wordEnd;
+        const lookAheadCount = 5; // Number of words to look ahead
+        
+        if (newWordIndex + lookAheadCount < wordTimestamps.length) {
+          const futureWord = wordTimestamps[newWordIndex + lookAheadCount];
+          if (futureWord && typeof futureWord.pos === 'number') {
+            endPos = futureWord.pos + futureWord.text.length;
+          }
+        } else if (wordTimestamps.length > 0) {
+          // If near the end, highlight to the end of the last word
+          const lastWord = wordTimestamps[wordTimestamps.length - 1];
+          endPos = lastWord.pos + lastWord.text.length;
+        }
+        
+        setHighlightStart(wordStart);
+        setHighlightEnd(endPos);
+        setIsHighlighting(true);
+      }
+    }
+  }, [isPlaying, currentTime, wordTimestamps, currentWordIndex, text]);
+
+  // Reset highlighting when audio stops playing
+  useEffect(() => {
+    if (!isPlaying) {
+      setIsHighlighting(false);
+    }
+  }, [isPlaying]);
+
+  // Auto-scroll to keep highlighted text visible
+  useEffect(() => {
+    if (isHighlighting && textContainerRef.current) {
+      // Find the highlighted element
+      const highlightElement = textContainerRef.current.querySelector('.highlighted-text');
+      
+      if (highlightElement) {
+        // Get the container's scroll position and dimensions
+        const container = textContainerRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const highlightRect = highlightElement.getBoundingClientRect();
+        
+        // Check if the highlight is outside the visible area
+        const isVisible = 
+          highlightRect.top >= containerRect.top && 
+          highlightRect.bottom <= containerRect.bottom;
+        
+        if (!isVisible) {
+          // Scroll the highlight into view with a small offset
+          const scrollOffset = 50;
+          const targetScroll = 
+            highlightRect.top - 
+            containerRect.top - 
+            scrollOffset + 
+            container.scrollTop;
+          
+          container.scrollTo({
+            top: targetScroll,
+            behavior: 'smooth'
+          });
+        }
+      }
+    }
+  }, [isHighlighting, highlightStart, highlightEnd]);
 
   return (
     <main className="min-h-screen bg-[#121212] relative flex">
@@ -611,17 +863,29 @@ export default function Home() {
             <label className="block text-sm font-medium text-white mb-2">
               Text to Speech
             </label>
-            <textarea
-              value={text}
-              onChange={handleTextChange}
-              rows={18}
-              className="w-full px-3 py-2 border border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-[#e25822] focus:border-[#e25822] bg-[#222222] text-white"
-              placeholder="Enter text to convert to speech..."
-            />
+            <div className="relative w-full">
+              {/* Visible text display with highlighting */}
+              <div 
+                ref={textContainerRef}
+                className="w-full px-3 py-2 border border-gray-700 rounded-md shadow-sm bg-[#222222] text-white min-h-[18rem] overflow-y-auto"
+              >
+                {renderHighlightedText()}
+              </div>
+              
+              {/* Hidden textarea for editing */}
+              <textarea
+                value={text}
+                onChange={handleTextChange}
+                rows={18}
+                className="absolute top-0 left-0 w-full h-full opacity-0 cursor-text"
+                placeholder="Enter text to convert to speech..."
+                aria-hidden="true"
+              />
+            </div>
           </div>
 
           {/* Generate Button */}
-          <div className="flex justify-center">
+          <div className="flex justify-center space-x-4">
             <button
               onClick={isGenerating ? stopPlaying : generateSpeech}
               disabled={!text.trim()}
@@ -634,6 +898,14 @@ export default function Home() {
               }`}
             >
               {isGenerating ? 'Stop' : 'Generate & Play Speech'}
+            </button>
+            
+            {/* Test Highlight Button - For development only */}
+            <button
+              onClick={testHighlighting}
+              className="px-6 py-3 rounded-md font-medium bg-gray-700 hover:bg-gray-600 text-white"
+            >
+              Test Highlight
             </button>
           </div>
 

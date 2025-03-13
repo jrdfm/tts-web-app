@@ -17,6 +17,8 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [pageWidth, setPageWidth] = useState(95);
+  const [isDragging, setIsDragging] = useState(false);
   
   const audioRef = useRef(null);
   const mediaSourceRef = useRef(null);
@@ -107,6 +109,42 @@ export default function Home() {
         setText(event.target.result);
       };
       reader.readAsText(selectedFile);
+    }
+  };
+
+  // Handle drag events for file upload
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const droppedFile = e.dataTransfer.files[0];
+      setFile(droppedFile);
+      
+      // Read the file content and set it as text
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setText(event.target.result);
+      };
+      reader.readAsText(droppedFile);
     }
   };
 
@@ -325,28 +363,30 @@ export default function Home() {
     setShowSettings(!showSettings);
   };
 
+  // Handle page width change
+  const handlePageWidthChange = (e) => {
+    setPageWidth(parseInt(e.target.value, 10));
+  };
+
   return (
-    <main className="min-h-screen bg-[#121212]">
-      {/* Audio Controls */}
+    <main className="min-h-screen bg-[#121212] relative flex">
+      {/* Settings Gear Icon - Fixed at top right */}
       {isBrowser && (
-        <div className="relative">
-          <AudioControls
-            currentTime={currentTime}
-            duration={duration}
-            isPlaying={isPlaying}
-            onPlay={() => handlePlayPause()}
-            onPause={() => handlePlayPause()}
-            onRewind={handleRewind}
-            onForward={handleForward}
-            playbackSpeed={playbackSpeed}
-            onSpeedChange={handleSpeedChange}
-            onSeek={handleSeek}
-            onSettingsClick={toggleSettings}
-          />
+        <div className="absolute top-3 right-4 z-30">
+          <button
+            onClick={toggleSettings}
+            className="w-8 h-8 flex items-center justify-center text-white hover:text-[#e25822] transition-colors"
+            aria-label="Settings"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
           
           {/* Settings Dropdown */}
           {showSettings && (
-            <div ref={settingsRef} className="absolute right-4 top-[calc(100%+4px)] z-10 w-64 bg-[#222222] border border-gray-700 rounded-md shadow-lg">
+            <div ref={settingsRef} className="absolute right-0 top-[calc(100%+4px)] z-10 w-64 bg-[#222222] border border-gray-700 rounded-md shadow-lg">
               <div className="p-3">
                 <h3 className="text-white font-medium mb-2">Settings</h3>
                 <div className="mb-3">
@@ -363,69 +403,129 @@ export default function Home() {
                     <option value="bm_brian">Brian</option>
                   </select>
                 </div>
+                
+                <div className="mb-3">
+                  <label className="block text-sm text-white mb-1">
+                    Page Width ({pageWidth}%)
+                  </label>
+                  <input
+                    type="range"
+                    min="60"
+                    max="95"
+                    value={pageWidth}
+                    onChange={handlePageWidthChange}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-gray-400 mt-1">
+                    <span>60%</span>
+                    <span>95%</span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Main Content */}
-      <div className="max-w-3xl mx-auto p-4">
-        {/* Text Input */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-white mb-1">
-            Text to Speech
-          </label>
-          <textarea
-            value={text}
-            onChange={handleTextChange}
-            rows={6}
-            className="w-full px-3 py-2 border border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-[#e25822] focus:border-[#e25822] bg-[#222222] text-white"
-            placeholder="Enter text to convert to speech..."
-          />
-        </div>
-
-        {/* File Upload */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-white mb-1">
-            Or upload a text file
-          </label>
-          <input
-            type="file"
-            accept=".txt"
-            onChange={handleFileChange}
-            className="w-full text-white"
-          />
-        </div>
-
-        {/* Generate Button */}
-        <div className="flex justify-center">
-          <button
-            onClick={isGenerating ? stopPlaying : generateSpeech}
-            disabled={!text.trim()}
-            className={`px-4 py-2 rounded-md font-medium ${
-              isGenerating
-                ? 'bg-red-600 hover:bg-red-700 text-white'
-                : text.trim()
-                ? 'bg-[#e25822] hover:bg-[#d04d1d] text-white'
-                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-            }`}
+      {/* Left Panel - Fixed width */}
+      <div className="w-24 border-r border-gray-800 bg-[#1a1a1a] overflow-y-auto flex-shrink-0">
+        <div className="p-2 pt-16"> {/* Increased top padding to move content down from gear icon */}
+          {/* File Upload - No labels */}
+          <div 
+            className={`flex flex-col items-center justify-center p-2 border-2 border-dashed ${isDragging ? 'border-[#e25822] bg-[#2a2a2a]' : 'border-gray-700 bg-[#222222]'} rounded-md hover:border-[#e25822] transition-colors cursor-pointer`}
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
-            {isGenerating ? 'Stop' : 'Generate & Play Speech'}
-          </button>
+            {/* Upload Icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-9 w-9 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <input
+              type="file"
+              accept=".txt"
+              onChange={handleFileChange}
+              className="hidden"
+              id="file-upload"
+            />
+            <label htmlFor="file-upload" className="px-2 py-1 bg-[#2a2a2a] rounded-md text-xs text-white hover:bg-[#333333] cursor-pointer text-center w-full">
+              Browse
+            </label>
+            {file && (
+              <div className="mt-2 text-xs text-gray-300 truncate max-w-full overflow-hidden text-center">
+                {file.name.length > 8 ? file.name.substring(0, 8) + '...' : file.name}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col overflow-auto">
+        {/* Audio Controls - Full Width */}
+        <div className="w-full sticky top-0 z-20">
+          {isBrowser && (
+            <AudioControls
+              currentTime={currentTime}
+              duration={duration}
+              isPlaying={isPlaying}
+              onPlay={() => handlePlayPause()}
+              onPause={() => handlePlayPause()}
+              onRewind={handleRewind}
+              onForward={handleForward}
+              playbackSpeed={playbackSpeed}
+              onSpeedChange={handleSpeedChange}
+              onSeek={handleSeek}
+            />
+          )}
         </div>
 
-        {/* Status and Error Messages */}
-        {status && (
-          <div className="mt-4 text-center text-sm text-gray-300">
-            {status}
+        {/* Main Content - Controlled Width */}
+        <div className="mx-auto p-6 w-full" style={{ maxWidth: `${pageWidth}%` }}>
+          {/* Text Input */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-white mb-2">
+              Text to Speech
+            </label>
+            <textarea
+              value={text}
+              onChange={handleTextChange}
+              rows={18}
+              className="w-full px-3 py-2 border border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-[#e25822] focus:border-[#e25822] bg-[#222222] text-white"
+              placeholder="Enter text to convert to speech..."
+            />
           </div>
-        )}
-        {error && (
-          <div className="mt-4 text-center text-sm text-red-400">
-            {error}
+
+          {/* Generate Button */}
+          <div className="flex justify-center">
+            <button
+              onClick={isGenerating ? stopPlaying : generateSpeech}
+              disabled={!text.trim()}
+              className={`px-6 py-3 rounded-md font-medium ${
+                isGenerating
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : text.trim()
+                  ? 'bg-[#e25822] hover:bg-[#d04d1d] text-white'
+                  : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              {isGenerating ? 'Stop' : 'Generate & Play Speech'}
+            </button>
           </div>
-        )}
+
+          {/* Status and Error Messages */}
+          {status && (
+            <div className="mt-4 text-center text-sm text-gray-300">
+              {status}
+            </div>
+          )}
+          {error && (
+            <div className="mt-4 text-center text-sm text-red-400">
+              {error}
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );

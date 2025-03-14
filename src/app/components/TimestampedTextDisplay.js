@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 
 /**
  * TimestampedTextDisplay Component
@@ -14,11 +14,15 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
   // Ref for the container div to enable auto-scrolling
   const containerRef = useRef(null);
   const wordRefs = useRef({});
+  const lastScrollTimeRef = useRef(0);
   
   // Debug timestamps data and check for manually generated timestamps
   useEffect(() => {
-    console.log('TimestampedTextDisplay received timestamps:', timestamps);
-    console.log('Current word index:', currentWordIndex);
+    // Reduce verbosity by only logging when timestamps change significantly
+    if (!timestamps || timestamps.length === 0) return;
+    
+    console.log('TimestampedTextDisplay received timestamps:', 
+                timestamps.length > 20 ? `${timestamps.length} words` : timestamps);
     
     // Check if these look like manually generated timestamps (very regular spacing)
     if (timestamps && timestamps.length > 2) {
@@ -34,11 +38,12 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
         setIsManualTimestamps(false);
       }
     }
-  }, [timestamps]);
+  }, [timestamps ? timestamps.length : 0]); // Only rerun when length changes
   
   // Group words into sentences (similar to SentenceTextDisplay)
-  useEffect(() => {
-    if (!timestamps || timestamps.length === 0) return;
+  // Using useMemo to avoid recalculating on every render
+  const processedSentences = useMemo(() => {
+    if (!timestamps || timestamps.length === 0) return [];
     
     const sentenceGroups = [];
     let currentSentence = {
@@ -77,8 +82,13 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
     });
     
     console.log('Created', sentenceGroups.length, 'word groups');
-    setSentences(sentenceGroups);
+    return sentenceGroups;
   }, [timestamps]);
+  
+  // Update sentences state only when processed sentences change
+  useEffect(() => {
+    setSentences(processedSentences);
+  }, [processedSentences]);
   
   // Error handling if timestamps are invalid
   useEffect(() => {
@@ -101,6 +111,55 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
     }
   }, [timestamps]);
   
+  // Handle clicking on a word to seek to that timestamp - memo for performance
+  const handleWordClick = useCallback((index) => {
+    if (onWordClick && timestamps[index]) {
+      console.log(`Clicking on word at index ${index}:`, timestamps[index]);
+      onWordClick(timestamps[index].start_time);
+    }
+  }, [onWordClick, timestamps]);
+  
+  // Auto-scroll to keep the current word visible in the container
+  useEffect(() => {
+    // Skip scrolling if word index hasn't changed or no ref exists
+    if (currentWordIndex < 0 || !wordRefs.current[currentWordIndex] || !containerRef.current) {
+      return;
+    }
+    
+    // Throttle scrolling to avoid excessive DOM operations
+    const now = Date.now();
+    if (now - lastScrollTimeRef.current < 100) {
+      // Skip this scroll if it's too soon after the last one
+      return;
+    }
+    lastScrollTimeRef.current = now;
+    
+    const container = containerRef.current;
+    const element = wordRefs.current[currentWordIndex];
+    
+    console.log(`Auto-scrolling to word at index ${currentWordIndex}`);
+    
+    const containerRect = container.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    
+    // Check if element is not fully visible
+    if (
+      elementRect.top < containerRect.top ||
+      elementRect.bottom > containerRect.bottom
+    ) {
+      // Calculate scroll position - center the element in the container
+      const scrollTop = 
+        element.offsetTop - 
+        container.offsetHeight / 2 + 
+        element.offsetHeight / 2;
+      
+      container.scrollTo({
+        top: scrollTop,
+        behavior: 'smooth'
+      });
+    }
+  }, [currentWordIndex]);
+
   if (!timestamps || timestamps.length === 0) {
     return (
       <div className="mb-6 mt-4">
@@ -126,44 +185,6 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
       </div>
     );
   }
-
-  // Handle clicking on a word to seek to that timestamp
-  const handleWordClick = (index) => {
-    if (onWordClick && timestamps[index]) {
-      console.log(`Clicking on word at index ${index}:`, timestamps[index]);
-      onWordClick(timestamps[index].start_time);
-    }
-  };
-  
-  // Auto-scroll to keep the current word visible in the container
-  useEffect(() => {
-    if (currentWordIndex >= 0 && wordRefs.current[currentWordIndex] && containerRef.current) {
-      const container = containerRef.current;
-      const element = wordRefs.current[currentWordIndex];
-      
-      console.log(`Auto-scrolling to word at index ${currentWordIndex}`);
-      
-      const containerRect = container.getBoundingClientRect();
-      const elementRect = element.getBoundingClientRect();
-      
-      // Check if element is not fully visible
-      if (
-        elementRect.top < containerRect.top ||
-        elementRect.bottom > containerRect.bottom
-      ) {
-        // Calculate scroll position - center the element in the container
-        const scrollTop = 
-          element.offsetTop - 
-          container.offsetHeight / 2 + 
-          element.offsetHeight / 2;
-        
-        container.scrollTo({
-          top: scrollTop,
-          behavior: 'smooth'
-        });
-      }
-    }
-  }, [currentWordIndex]);
 
   return (
     <div className="mb-6 mt-4">
@@ -196,13 +217,16 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
                     // Determine if we need space before this word
                     const needsSpace = wordIndex > 0 && !isPunctuation;
                     
+                    // Check if this word is the current word - using equality check for performance
+                    const isCurrentWord = globalIndex === currentWordIndex;
+                    
                     return (
                       <React.Fragment key={`word-${globalIndex}`}>
                         {needsSpace && <span> </span>}
                         <span
                           ref={el => wordRefs.current[globalIndex] = el}
                           className={`${
-                            currentWordIndex === globalIndex
+                            isCurrentWord
                               ? 'bg-[#e25822] text-white font-medium px-1 py-0.5 rounded'
                               : 'hover:underline hover:text-white'
                           } cursor-pointer`}
@@ -227,13 +251,16 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
               const isPunctuation = /^[.,!?:;]$/.test(item.word.trim());
               const needsSpace = index > 0 && !isPunctuation;
               
+              // Check if this word is the current word - using equality check for performance
+              const isCurrentWord = index === currentWordIndex;
+              
               return (
                 <React.Fragment key={`word-fallback-${index}`}>
                   {needsSpace && <span> </span>}
                   <span
                     ref={el => wordRefs.current[index] = el}
                     className={`${
-                      currentWordIndex === index
+                      isCurrentWord
                         ? 'bg-[#e25822] text-white font-medium px-1 py-0.5 rounded'
                         : 'hover:underline hover:text-white'
                     } cursor-pointer`}

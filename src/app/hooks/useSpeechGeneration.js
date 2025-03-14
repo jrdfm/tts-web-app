@@ -21,6 +21,9 @@ export default function useSpeechGeneration() {
   const [timestampsPath, setTimestampsPath] = useState(null);
   const [currentWordIndex, setCurrentWordIndex] = useState(-1);
   
+  // Store the original text for alignment
+  const [originalText, setOriginalText] = useState('');
+  
   // Refs for audio and streaming
   const audioElementRef = useRef(null);
   const audioBlobUrlRef = useRef(null);
@@ -72,55 +75,33 @@ export default function useSpeechGeneration() {
         clearInterval(timestampIntervalRef.current);
       }
       
-      // Create new interval to check current word - run more frequently for smoother updates
+      // Create new interval to check current word
       timestampIntervalRef.current = setInterval(() => {
         if (!audioElementRef.current) return;
         
         const currentTime = audioElementRef.current.currentTime;
+        
+        // Simple, direct approach - find the timestamp whose range contains the current time
         let foundIndex = -1;
         
-        // Find the word that corresponds to the current time
+        // Direct match - most efficient
         for (let i = 0; i < timestamps.length; i++) {
           const { start_time, end_time } = timestamps[i];
-          
-          // Check for exact match within word boundaries
           if (currentTime >= start_time && currentTime <= end_time) {
             foundIndex = i;
             break;
           }
         }
         
-        // If we didn't find an exact match, try to find the closest word
-        if (foundIndex === -1) {
-          // If past the end of all words
-          if (timestamps.length > 0 && currentTime > timestamps[timestamps.length - 1].end_time) {
-            foundIndex = timestamps.length - 1;
-          } 
-          // If before the first word
-          else if (timestamps.length > 0 && currentTime < timestamps[0].start_time) {
-            foundIndex = -1;
+        // Only update if we found a valid index that's different from current
+        if (foundIndex !== -1 && foundIndex !== currentWordIndex) {
+          // Only log occasionally to reduce console spam
+          if (foundIndex % 10 === 0) {
+            console.log(`Setting word index to ${foundIndex} at time ${currentTime.toFixed(2)}s`);
           }
-          // Try to find closest word by distance
-          else {
-            let closestDistance = Number.MAX_VALUE;
-            for (let i = 0; i < timestamps.length; i++) {
-              const { start_time, end_time } = timestamps[i];
-              const midpoint = (start_time + end_time) / 2;
-              const distance = Math.abs(currentTime - midpoint);
-              
-              if (distance < closestDistance) {
-                closestDistance = distance;
-                foundIndex = i;
-              }
-            }
-          }
-        }
-        
-        if (foundIndex !== currentWordIndex) {
-          console.log(`Setting current word index to ${foundIndex} at time ${currentTime.toFixed(2)}s`);
           setCurrentWordIndex(foundIndex);
         }
-      }, 30); // Check every 30ms for smoother highlighting
+      }, 60); // 60ms is fast enough for responsive highlighting without too much overhead
     } else {
       // Clear interval if not playing
       if (timestampIntervalRef.current) {
@@ -165,6 +146,7 @@ export default function useSpeechGeneration() {
     setTimestamps([]);
     setTimestampsPath(null);
     setCurrentWordIndex(-1);
+    // Do not clear originalText here to allow alignment after playback stops
   };
 
   // Stop playing audio
@@ -177,6 +159,7 @@ export default function useSpeechGeneration() {
     cleanup();
     setIsPlaying(false);
     setIsGenerating(false);
+    // We keep originalText to allow alignment to work even after stopping
   };
   
   // Fetch timestamps from the server with retry
@@ -291,6 +274,9 @@ export default function useSpeechGeneration() {
     }
 
     try {
+      // Store the original text for alignment
+      setOriginalText(text);
+      
       // Reset state
       setError('');
       setStatus('Generating speech...');
@@ -307,17 +293,10 @@ export default function useSpeechGeneration() {
       audioElementRef.current = new Audio();
       audioElementRef.current.preload = 'auto';
       
+      // Keep track of last processed chunk count for updates
+      let lastProcessedChunkCount = 0;
+      
       // Add event listeners
-      audioElementRef.current.addEventListener('ended', () => {
-        setIsPlaying(false);
-        setStatus('Playback complete');
-      });
-      
-      audioElementRef.current.addEventListener('error', (e) => {
-        console.error('Audio error:', e);
-        setError(`Audio error: ${e.message || 'Unknown error'}`);
-      });
-      
       audioElementRef.current.addEventListener('play', () => {
         console.log('Audio play event');
         setIsPlaying(true);
@@ -328,6 +307,26 @@ export default function useSpeechGeneration() {
         if (!audioElementRef.current.ended) {
           setIsPlaying(false);
         }
+      });
+      
+      audioElementRef.current.addEventListener('ended', () => {
+        console.log('Audio ended event fired');
+        
+        // Always try to continue if we have more chunks
+        if (chunksRef.current.length > lastProcessedChunkCount) {
+          console.log(`Audio ended with more chunks available, continuing playback`);
+          lastProcessedChunkCount = chunksRef.current.length;
+          updateAudioFromChunks(true); // Force play because it ended
+        } else {
+          console.log('Audio ended with no more chunks, finishing playback');
+          setIsPlaying(false);
+          setStatus('Playback complete');
+        }
+      });
+      
+      audioElementRef.current.addEventListener('error', (e) => {
+        console.error('Audio error:', e);
+        setError(`Audio error: ${e.message || 'Unknown error'}`);
       });
       
       // Create a new abort controller
@@ -362,7 +361,7 @@ export default function useSpeechGeneration() {
       
       setStatus('Receiving audio stream...');
       
-      // NEW APPROACH: Read line by line to get JSON data
+      // Read line by line to get JSON data
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let receivedChunks = 0;
@@ -405,13 +404,8 @@ export default function useSpeechGeneration() {
               chunksRef.current.push(audioBytes);
               totalChunksRef.current = receivedChunks;
               
-              // Update audio immediately
-              await updateAudioFromChunks(receivedChunks === 1); // Force play on first chunk
-              
               // Handle timestamps if present
               if (chunkJson.timestamps) {
-                console.log(`Received timestamps for chunk ${receivedChunks}:`, chunkJson.timestamps);
-                
                 // Validate and process the timestamps
                 if (Array.isArray(chunkJson.timestamps)) {
                   // Check if timestamps have required fields
@@ -439,6 +433,20 @@ export default function useSpeechGeneration() {
               // Update the display status
               setStatus(`Processing chunk ${receivedChunks}`);
               setStreamProgress(Math.min(receivedChunks * 5, 99));
+              
+              // Handle new chunk logic in the stream processing
+              if (receivedChunks === 1) {
+                console.log("Starting initial playback with first chunk");
+                await updateAudioFromChunks(true); // Force play first chunk
+                lastProcessedChunkCount = 1;
+              } 
+              // Always update when we have new chunks
+              else if (chunksRef.current.length > lastProcessedChunkCount) {
+                console.log(`Updating audio with new chunks (${chunksRef.current.length - lastProcessedChunkCount} new chunks)`);
+                const wasEnded = audioElementRef.current && audioElementRef.current.ended;
+                await updateAudioFromChunks(wasEnded); // Only force play if it ended
+                lastProcessedChunkCount = chunksRef.current.length;
+              }
             }
           } catch (parseError) {
             console.error('Error parsing JSON chunk:', parseError, 'Line:', line);
@@ -447,16 +455,20 @@ export default function useSpeechGeneration() {
       }
       
       // Final update when stream is complete
-      console.log('Final audio update with all chunks');
-      await updateAudioFromChunks();
+      console.log('Stream complete, final audio update');
       
-      console.log(`Stream complete. Processed ${receivedChunks} chunks with ${allTimestamps.length} total timestamps`);
+      // If playback stopped prematurely, try one final restart
+      if (audioElementRef.current && (audioElementRef.current.paused || audioElementRef.current.ended) && 
+          chunksRef.current.length > lastProcessedChunkCount) {
+        console.log('Final attempt to resume playback with all chunks');
+        await updateAudioFromChunks(true);
+      }
       
       // Complete
       setIsGenerating(false);
       setIsStreaming(false);
       setStreamProgress(100);
-      setStatus('Audio streaming complete');
+      setStatus('Audio generation complete');
       
     } catch (err) {
       console.error('Error generating speech:', err);
@@ -931,6 +943,7 @@ export default function useSpeechGeneration() {
     // Timestamp related
     timestamps,
     currentWordIndex,
+    originalText,  // Expose the original text
     
     // Refs
     audioElementRef,

@@ -139,6 +139,10 @@ export default function Home() {
           <TextInputSection
             text={text}
             onTextChange={handleTextChange}
+            timestamps={speechGen.timestamps}
+            currentWordIndex={speechGen.currentWordIndex}
+            originalText={speechGen.originalText}
+            isPlaying={speechGen.isPlaying}
           />
 
           {/* Display Options */}
@@ -169,6 +173,7 @@ export default function Home() {
                       timestamps={speechGen.timestamps}
                       currentWordIndex={speechGen.currentWordIndex}
                       onWordClick={handleWordClick}
+                      originalText={speechGen.originalText || text}
                     />
                   )}
                   

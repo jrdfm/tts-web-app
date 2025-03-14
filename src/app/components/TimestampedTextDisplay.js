@@ -8,7 +8,6 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
   // Local state for error tracking
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [isManualTimestamps, setIsManualTimestamps] = useState(false);
   const [sentences, setSentences] = useState([]);
   
   // Ref for the container div to enable auto-scrolling
@@ -16,32 +15,16 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
   const wordRefs = useRef({});
   const lastScrollTimeRef = useRef(0);
   
-  // Debug timestamps data and check for manually generated timestamps
+  // Debug timestamps data
   useEffect(() => {
     // Reduce verbosity by only logging when timestamps change significantly
     if (!timestamps || timestamps.length === 0) return;
     
     console.log('TimestampedTextDisplay received timestamps:', 
                 timestamps.length > 20 ? `${timestamps.length} words` : timestamps);
-    
-    // Check if these look like manually generated timestamps (very regular spacing)
-    if (timestamps && timestamps.length > 2) {
-      // Check for perfectly even spacing which would indicate manual generation
-      const interval1 = timestamps[1].start_time - timestamps[0].start_time;
-      const interval2 = timestamps[2].start_time - timestamps[1].start_time;
-      const isRegular = Math.abs(interval1 - interval2) < 0.001;
-      
-      if (isRegular) {
-        console.log('Detected manually generated timestamps');
-        setIsManualTimestamps(true);
-      } else {
-        setIsManualTimestamps(false);
-      }
-    }
-  }, [timestamps ? timestamps.length : 0]); // Only rerun when length changes
+  }, [timestamps ? timestamps.length : 0]);
   
-  // Group words into sentences (similar to SentenceTextDisplay)
-  // Using useMemo to avoid recalculating on every render
+  // Group words into sentences
   const processedSentences = useMemo(() => {
     if (!timestamps || timestamps.length === 0) return [];
     
@@ -188,11 +171,8 @@ export default function TimestampedTextDisplay({ timestamps, currentWordIndex, o
 
   return (
     <div className="mb-6 mt-4">
-      <label className="block text-sm font-medium text-white mb-2 flex justify-between">
+      <label className="block text-sm font-medium text-white mb-2">
         <span>Word Timestamps {timestamps.length > 0 ? `(${timestamps.length} words)` : ''}</span>
-        {isManualTimestamps && (
-          <span className="text-yellow-500 text-xs">Using estimated timestamps</span>
-        )}
       </label>
       <div 
         ref={containerRef}

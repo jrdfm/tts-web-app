@@ -144,7 +144,6 @@ export default function useSpeechGeneration() {
     setStreamProgress(0);
     setTimestamps([]);
     setCurrentWordIndex(-1);
-    // Do not clear originalText here to allow alignment after playback stops
   };
 
   // Stop playing audio
@@ -299,29 +298,9 @@ export default function useSpeechGeneration() {
               totalChunksRef.current = receivedChunks;
               
               // Handle timestamps if present
-              if (chunkJson.timestamps) {
-                // Validate and process the timestamps
-                if (Array.isArray(chunkJson.timestamps)) {
-                  // Check if timestamps have required fields
-                  const validTimestamps = chunkJson.timestamps.filter(ts => 
-                    ts && typeof ts.word === 'string' && 
-                    typeof ts.start_time === 'number' && 
-                    typeof ts.end_time === 'number'
-                  );
-                  
-                  if (validTimestamps.length > 0) {
-                    // If this is the first set, just use it
-                    if (allTimestamps.length === 0) {
-                      allTimestamps = validTimestamps;
-                    } else {
-                      // Otherwise, merge with existing timestamps
-                      allTimestamps = [...allTimestamps, ...validTimestamps];
-                    }
-                    
-                    // Update timestamps in the UI
-                    setTimestamps(allTimestamps);
-                  }
-                }
+              if (chunkJson.timestamps && Array.isArray(chunkJson.timestamps)) {
+                allTimestamps = [...allTimestamps, ...chunkJson.timestamps];
+                setTimestamps(allTimestamps);
               }
               
               // Update the display status

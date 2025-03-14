@@ -1,0 +1,81 @@
+<think>
+Okay, the user wants to host their API server, which is currently running on port 8880 on their local machine, on another PC in their home network and access it from their current machine. Let me think about the steps they need to take.
+
+First, they need to ensure the server is reachable on the network. The server is using FastAPI with Uvicorn, so I should check if it's bound to 0.0.0.0. If it's only listening on 127.0.0.1, other devices can't access it. The current command they're using has --host 0.0.0.0, which is good.
+
+Next, the user needs to run the server on the other PC. They might have to install Python dependencies, clone the repository, and start the server there. But maybe they've already set it up. They can use the same uvicorn command as before.
+
+Then, the user needs the local IP address of the other PC. On Linux, they can use hostname -I, and on Windows, ipconfig. Once they have the IP, say 192.168.1.100, they can access the API from their current machine using that IP and port 8880.
+
+Firewall settings are crucial. The other PC's firewall must allow incoming connections on port 8880. I should mention how to check that on Linux with ufw and on Windows via the firewall settings.
+
+If the user wants a more stable setup, they might consider using a reverse proxy like Nginx, but that's optional. Also, setting up a static IP or using a hostname with avahi-daemon on Linux could help, but that's more advanced.
+
+Testing connectivity is important. They can use ping to check if the other PC is reachable and curl or a browser to test the API endpoint. If there are issues, checking the server logs and firewall again would help.
+
+I should also remind them to keep the server running, maybe using a process manager like tmux, or running it as a service. Security-wise, exposing the API on a home network is generally safe, but they should avoid exposing it to the internet without proper security measures.
+
+Putting it all together, the steps are: check server binding, get the other PC's IP, configure firewall, run the server on the other PC, and access it via the IP:port. Provide example commands for each step and mention possible troubleshooting tips.
+</think>
+
+Here's how to expose your API server on your home network:
+
+1. **On the Server PC (where API runs):**
+```bash
+# 1. Find your local IP address (Linux/Mac)
+hostname -I
+
+# Windows alternative:
+ipconfig | findstr "IPv4"
+# Look for the 192.168.x.x address
+```
+
+2. **Start the server with explicit binding:**
+```bash
+cd /home/jrd/fun/tts/Kokoro-FastAPI
+python -m uvicorn api.src.main:app --host 0.0.0.0 --port 8880 --reload
+```
+
+3. **On Your Client PC (where you'll make requests):**
+```python
+# Replace SERVER_IP with the server's local IP
+requests.post("http://SERVER_IP:8880/dev/captioned_speech", ...)
+```
+
+**Key Requirements:**
+1. Both devices must be on the same network
+2. Server PC firewall must allow incoming connections on port 8880
+3. Router shouldn't block local network traffic
+
+**To Open Firewall (Ubuntu Server Example):**
+```bash
+sudo ufw allow 8880/tcp
+```
+
+**For Windows Firewall:**
+1. Open "Windows Defender Firewall with Advanced Security"
+2. Create new Inbound Rule for TCP port 8880
+
+**Troubleshooting Tips:**
+```bash
+# Test connectivity first
+ping SERVER_IP
+
+# Check if port is open from client
+telnet SERVER_IP 8880  # or use nc/nmap
+```
+
+**Advanced Option - Set Static IP:**
+```bash
+# On server PC (Ubuntu example)
+sudo nano /etc/netplan/01-netcfg.yaml
+# Add under your interface:
+#   dhcp4: no
+#   addresses: [192.168.1.100/24]
+#   gateway4: 192.168.1.1
+#   nameservers:
+#     addresses: [8.8.8.8]
+sudo netplan apply
+```
+
+Would you like me to help set up any specific part of this process?
